@@ -6,8 +6,9 @@ import json
 import re
 import datetime
 import feedparser
+import os
 
-TOKEN = "MTQ4MDAyNTA3NjY2NDUwMDMyNw.G9PGg1.6GKUELdVLN8Z2DWppvAtlsm3TojvcUP3UDAzm8"
+TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = 1480026254743830528
 
 DATABASE = "codes.json"
@@ -225,6 +226,7 @@ async def on_ready():
 
     code_scanner.start()
     daily_codes.start()
+
 
 
 bot.run(TOKEN)
