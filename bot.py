@@ -1,11 +1,10 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import tasks
+from discord import app_commands
 import requests
 from bs4 import BeautifulSoup
 import json
 import re
-import datetime
-import feedparser
 import os
 
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -13,29 +12,24 @@ CHANNEL_ID = 1480026254743830528
 
 DATABASE = "codes.json"
 
-bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+intents = discord.Intents.default()
+client = discord.Client(intents=intents)
+tree = app_commands.CommandTree(client)
 
 sources = [
     "https://www.serebii.net/events/"
 ]
 
-rss_sources = [
-    "https://www.serebii.net/index2.xml"
-]
-
 
 def load_db():
-
     try:
         with open(DATABASE) as f:
             return json.load(f)
-
     except:
         return {}
 
 
 def save_db(data):
-
     with open(DATABASE, "w") as f:
         json.dump(data, f, indent=4)
 
@@ -50,7 +44,7 @@ def detect_game(text):
     if "pokemon go" in text:
         return "Pokemon GO"
 
-    if "legends z" in text or "za" in text:
+    if "za" in text:
         return "Legends ZA"
 
     if "arceus" in text:
@@ -107,7 +101,7 @@ async def scrape_codes():
 @tasks.loop(minutes=20)
 async def code_scanner():
 
-    channel = bot.get_channel(CHANNEL_ID)
+    channel = client.get_channel(CHANNEL_ID)
 
     db = load_db()
 
@@ -122,7 +116,7 @@ async def code_scanner():
             db[code] = item
 
             embed = discord.Embed(
-                title="New Pokémon Code Found",
+                title="New Pokémon Mystery Gift Code",
                 color=0x00ff00
             )
 
@@ -138,11 +132,14 @@ async def code_scanner():
 @tasks.loop(hours=24)
 async def daily_codes():
 
-    channel = bot.get_channel(CHANNEL_ID)
+    channel = client.get_channel(CHANNEL_ID)
 
     db = load_db()
 
     active = [c for c in db.values() if c["status"] == "active"]
+
+    if not active:
+        return
 
     embed = discord.Embed(
         title="Daily Active Pokémon Codes",
@@ -160,15 +157,16 @@ async def daily_codes():
     await channel.send(embed=embed)
 
 
-@bot.command()
-async def codes(ctx, game=None):
+@tree.command(name="codes", description="Show active Pokemon codes")
+async def codes(interaction: discord.Interaction):
 
     db = load_db()
 
     active = [c for c in db.values() if c["status"] == "active"]
 
-    if game:
-        active = [c for c in active if game.lower() in c["game"].lower()]
+    if not active:
+        await interaction.response.send_message("No active codes found.")
+        return
 
     embed = discord.Embed(
         title="Active Pokémon Codes",
@@ -183,22 +181,26 @@ async def codes(ctx, game=None):
             inline=False
         )
 
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 
-@bot.command()
-async def expired(ctx):
+@tree.command(name="expired", description="Show expired codes")
+async def expired(interaction: discord.Interaction):
 
     db = load_db()
 
-    expired = [c for c in db.values() if c["status"] == "expired"]
+    expired_codes = [c for c in db.values() if c["status"] == "expired"]
+
+    if not expired_codes:
+        await interaction.response.send_message("No expired codes stored.")
+        return
 
     embed = discord.Embed(
         title="Expired Pokémon Codes",
         color=0xe74c3c
     )
 
-    for c in expired[:25]:
+    for c in expired_codes[:25]:
 
         embed.add_field(
             name=c["code"],
@@ -206,27 +208,28 @@ async def expired(ctx):
             inline=False
         )
 
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 
-@bot.command()
-async def refresh(ctx):
+@tree.command(name="refresh", description="Force check for new codes")
+async def refresh(interaction: discord.Interaction):
 
-    await ctx.send("Checking for new codes...")
+    await interaction.response.send_message("Checking for new codes...")
 
     await code_scanner()
 
-    await ctx.send("Done.")
+    await interaction.followup.send("Done.")
 
 
-@bot.event
+@client.event
 async def on_ready():
 
-    print("Bot Online")
+    await tree.sync()
+
+    print("Bot online")
 
     code_scanner.start()
     daily_codes.start()
 
 
-
-bot.run(TOKEN)
+client.run(TOKEN)
